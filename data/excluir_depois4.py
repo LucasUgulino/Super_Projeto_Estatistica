@@ -1,1 +1,0 @@
-# não sei a pasta data iria subir no github mesmo que as pastas dentro dela tenham códigos, então botei.
