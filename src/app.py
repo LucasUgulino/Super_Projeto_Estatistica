@@ -238,10 +238,22 @@ with aba1:
         col1, col2 = st.columns(2)
         
         with col1:
+            # 1. Distribuição de Idades por Conversão com Filtro de Estado Civil
             st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
             st.subheader("1. Distribuição de Idades por Conversão")
+            
+            # Filtro interativo para o gráfico 1
+            opcoes_marital = ["Todos"] + sorted(list(df["marital"].unique()))
+            filtro_marital = st.selectbox(
+                "Filtrar por Estado Civil (Gráfico 1):", 
+                opcoes_marital,
+                key="filtro_g1"
+            )
+            
+            df_g1 = df if filtro_marital == "Todos" else df[df["marital"] == filtro_marital]
+            
             fig_idade = px.histogram(
-                df, 
+                df_g1, 
                 x="age", 
                 color="y_desc", 
                 nbins=30,
@@ -259,17 +271,31 @@ with aba1:
             )
             st.plotly_chart(fig_idade, use_container_width=True)
             
-            st.markdown("""
+            st.markdown(f"""
             **Objetivo Analítico:** Identificar em quais faixas etárias de clientes se concentra a maior taxa de conversão (adesão ao depósito a prazo). 
             
             *Insight:* Embora o volume absoluto de chamadas se concentre na faixa dos 30 a 45 anos, as proporções de conversão (adesão) são visivelmente mais altas para jovens (abaixo de 25 anos) e idosos (acima de 65 anos).
+            
+            *Filtro Ativo:* **{filtro_marital}** (Exibindo {len(df_g1)} registros).
             """)
             st.markdown("</div>", unsafe_allow_html=True)
             
+            # 3. Relação entre Duração da Chamada e Adesão com Filtro de Mês
             st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
             st.subheader("3. Relação entre Duração da Chamada e Adesão")
+            
+            # Filtro interativo para o gráfico 3
+            opcoes_mes = ["Todos"] + sorted(list(df["month"].unique()))
+            filtro_mes = st.selectbox(
+                "Filtrar por Mês do Contato (Gráfico 3):", 
+                opcoes_mes,
+                key="filtro_g3"
+            )
+            
+            df_g3 = df if filtro_mes == "Todos" else df[df["month"] == filtro_mes]
+            
             fig_duracao = px.box(
-                df,
+                df_g3,
                 x="y_desc",
                 y="duration",
                 color="y_desc",
@@ -284,19 +310,33 @@ with aba1:
                 margin=dict(l=10, r=10, t=30, b=10)
             )
             st.plotly_chart(fig_duracao, use_container_width=True)
-            st.markdown("""
+            st.markdown(f"""
             **Objetivo Analítico:** Analisar o impacto da duração da chamada telefônica na probabilidade de adesão do cliente.
             
             *Insight:* Chamadas com conversão bem-sucedida possuem duração mediana significativamente superior (cerca de 550 segundos) em comparação às rejeitadas (cerca de 220 segundos). 
             
             *Nota Estatística:* Embora seja um preditor forte, esta variável causa vazamento de dados (data leakage) e foi descartada na modelagem preditiva real, pois só é conhecida após o término do contato.
+            
+            *Filtro Ativo:* **{filtro_mes}** (Exibindo {len(df_g3)} registros).
             """)
             st.markdown("</div>", unsafe_allow_html=True)
 
         with col2:
+            # 2. Taxa de Conversão por Categoria Ocupacional com Filtro de Canal de Contato
             st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
             st.subheader("2. Taxa de Conversão por Categoria Ocupacional (Job)")
-            conversao_job = df.groupby('job', observed=False)['y'].apply(
+            
+            # Filtro interativo para o gráfico 2
+            opcoes_contato = ["Todos"] + sorted(list(df["contact"].unique()))
+            filtro_contato = st.selectbox(
+                "Filtrar por Canal de Comunicação (Gráfico 2):", 
+                opcoes_contato,
+                key="filtro_g2"
+            )
+            
+            df_g2 = df if filtro_contato == "Todos" else df[df["contact"] == filtro_contato]
+            
+            conversao_job = df_g2.groupby('job', observed=False)['y'].apply(
                 lambda x: (x == 'yes').mean() * 100 if x.dtype == object else x.mean() * 100
             ).reset_index().sort_values(by='y', ascending=True)
             
@@ -317,16 +357,30 @@ with aba1:
                 margin=dict(l=10, r=10, t=30, b=10)
             )
             st.plotly_chart(fig_job, use_container_width=True)
-            st.markdown("""
+            st.markdown(f"""
             **Objetivo Analítico:** Mapear a aderência do produto de investimento a diferentes perfis socioeconômicos representados pela ocupação do cliente.
             
             *Insight:* Estudantes e aposentados lideram as taxas de conversão com valores acima de 25%. Em contrapartida, trabalhadores braçais e de serviços apresentam taxas de conversão inferiores a 10%.
+            
+            *Filtro Ativo:* **{filtro_contato}** (Exibindo {len(df_g2)} registros).
             """)
             st.markdown("</div>", unsafe_allow_html=True)
 
+            # 4. Impacto do Sucesso de Campanhas Anteriores com Filtro de Inadimplência
             st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
             st.subheader("4. Impacto do Sucesso de Campanhas Anteriores")
-            poutcome_y = pd.crosstab(df['poutcome'], df['y_desc'], normalize='index') * 100
+            
+            # Filtro interativo para o gráfico 4
+            opcoes_housing = ["Todos"] + sorted(list(df["housing"].unique()))
+            filtro_housing = st.selectbox(
+                "Filtrar por Empréstimo Imobiliário (Gráfico 4):", 
+                opcoes_housing,
+                key="filtro_g4"
+            )
+            
+            df_g4 = df if filtro_housing == "Todos" else df[df["housing"] == filtro_housing]
+            
+            poutcome_y = pd.crosstab(df_g4['poutcome'], df_g4['y_desc'], normalize='index') * 100
             poutcome_y = poutcome_y.reset_index()
             
             fig_poutcome = px.bar(
@@ -345,10 +399,12 @@ with aba1:
                 margin=dict(l=10, r=10, t=30, b=10)
             )
             st.plotly_chart(fig_poutcome, use_container_width=True)
-            st.markdown("""
+            st.markdown(f"""
             **Objetivo Analítico:** Avaliar a persistência temporal de comportamento do cliente, isto é, se o sucesso de um contato em uma campanha passada prediz a conversão atual.
             
             *Insight:* Clientes que aderiram a campanhas anteriores (success) possuem taxa de conversão atual próxima a 65%, enquanto aqueles que nunca foram contatados ou falharam anteriormente ficam abaixo de 15%.
+            
+            *Filtro Ativo:* **{filtro_housing}** (Exibindo {len(df_g4)} registros).
             """)
             st.markdown("</div>", unsafe_allow_html=True)
 
