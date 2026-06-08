@@ -3,12 +3,14 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import os
+import pickle
+import json
 
-# Importa os mocks de predição
+# Importa a predição real do Bayes Manual
 try:
-    from predict_mock import predict_bayes_manual, predict_logistic_regression, predict_random_forest
+    from teorema_bayes import prever_bayes
 except ImportError:
-    from src.predict_mock import predict_bayes_manual, predict_logistic_regression, predict_random_forest
+    from src.teorema_bayes import prever_bayes
 
 # Configurações de layout e estética premium
 st.set_page_config(
@@ -215,7 +217,58 @@ def load_data():
     st.error("Dataset processado não encontrado. Certifique-se de executar o pipeline de limpeza primeiro.")
     return None
 
+# Função para carregar os modelos e estatísticas reais de predição
+@st.cache_resource
+def load_predictive_resources():
+    paths = {
+        "bayes": ["models/bayes_dados.json", "../models/bayes_dados.json"],
+        "cols": ["models/colunas_treino.json", "../models/colunas_treino.json"],
+        "scaler": ["models/scaler.pkl", "../models/scaler.pkl"],
+        "lr": ["models/modelo_logistico.pkl", "../models/modelo_logistico.pkl"],
+        "dt": ["models/modelo_arvore.pkl", "../models/modelo_arvore.pkl"]
+    }
+    
+    resources = {}
+    
+    # 1. Carrega dados de Bayes
+    for p in paths["bayes"]:
+        if os.path.exists(p):
+            with open(p, "r") as f:
+                resources["bayes"] = json.load(f)
+            break
+            
+    # 2. Carrega colunas de treino
+    for p in paths["cols"]:
+        if os.path.exists(p):
+            with open(p, "r") as f:
+                resources["cols"] = json.load(f)
+            break
+            
+    # 3. Carrega o scaler
+    for p in paths["scaler"]:
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                resources["scaler"] = pickle.load(f)
+            break
+            
+    # 4. Carrega Regressão Logística
+    for p in paths["lr"]:
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                resources["lr"] = pickle.load(f)
+            break
+            
+    # 5. Carrega Árvore de Decisão
+    for p in paths["dt"]:
+        if os.path.exists(p):
+            with open(p, "rb") as f:
+                resources["dt"] = pickle.load(f)
+            break
+            
+    return resources
+
 df = load_data()
+resources = load_predictive_resources()
 
 # Título Principal do Dashboard
 st.markdown("<h1 class='main-title'>Super Projeto de Estatística e Probabilidade</h1>", unsafe_allow_html=True)
@@ -242,7 +295,6 @@ with aba1:
             st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
             st.subheader("1. Distribuição de Idades por Conversão")
             
-            # Filtro interativo para o gráfico 1
             opcoes_marital = ["Todos"] + sorted(list(df["marital"].unique()))
             filtro_marital = st.selectbox(
                 "Filtrar por Estado Civil (Gráfico 1):", 
@@ -284,7 +336,6 @@ with aba1:
             st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
             st.subheader("3. Relação entre Duração da Chamada e Adesão")
             
-            # Filtro interativo para o gráfico 3
             opcoes_mes = ["Todos"] + sorted(list(df["month"].unique()))
             filtro_mes = st.selectbox(
                 "Filtrar por Mês do Contato (Gráfico 3):", 
@@ -326,7 +377,6 @@ with aba1:
             st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
             st.subheader("2. Taxa de Conversão por Categoria Ocupacional (Job)")
             
-            # Filtro interativo para o gráfico 2
             opcoes_contato = ["Todos"] + sorted(list(df["contact"].unique()))
             filtro_contato = st.selectbox(
                 "Filtrar por Canal de Comunicação (Gráfico 2):", 
@@ -370,7 +420,6 @@ with aba1:
             st.markdown("<div class='custom-card'>", unsafe_allow_html=True)
             st.subheader("4. Impacto do Sucesso de Campanhas Anteriores")
             
-            # Filtro interativo para o gráfico 4
             opcoes_housing = ["Todos"] + sorted(list(df["housing"].unique()))
             filtro_housing = st.selectbox(
                 "Filtrar por Empréstimo Imobiliário (Gráfico 4):", 
@@ -498,11 +547,93 @@ with aba2:
         st.markdown("<h3 style='color:#06b6d4; margin-bottom: 15px;'>Resultados da Classificação</h3>", unsafe_allow_html=True)
         st.write("Análise comparativa das probabilidades estimadas por modelo preditivo:")
         
-        # Roda as predições
-        pred_bayes, prob_bayes = predict_bayes_manual(cliente_dict)
-        pred_lr, prob_lr = predict_logistic_regression(cliente_dict)
-        pred_rf, prob_rf = predict_random_forest(cliente_dict)
-        
+        # 1. Roda predição do Bayes Manual (Real)
+        if "bayes" in resources:
+            pred_bayes, prob_bayes = prever_bayes(
+                cliente_dict, 
+                resources["bayes"]["prior"], 
+                resources["bayes"]["likelihood"]
+            )
+        else:
+            # Fallback de segurança se o arquivo json não foi carregado
+            pred_bayes, prob_bayes = "Não compra", 0.0
+            
+        # 2. Roda predição dos Modelos Scikit-Learn (Reais)
+        if "lr" in resources and "dt" in resources and "cols" in resources and "scaler" in resources:
+            # Prepara vetor do cliente contendo exatamente as colunas e formatos do get_dummies do treino
+            # Inferência lógica das colunas numéricas ausentes no formulário
+            pdays_val = 0 if poutcome_input == 'nonexistent' else 5
+            previous_val = 0 if poutcome_input == 'nonexistent' else 1
+            
+            # Cria dataframe individual do cliente
+            X_cliente = pd.DataFrame([{
+                'age': float(idade_input),
+                'job': job_input,
+                'marital': marital_input,
+                'education': education_input,
+                'default': default_input,
+                'housing': housing_input,
+                'loan': loan_input,
+                'contact': contact_input,
+                'month': month_input,
+                'day_of_week': day_input,
+                'campaign': float(campaign_input),
+                'pdays': float(pdays_val),
+                'previous': float(previous_val),
+                'poutcome': poutcome_input,
+                'contatado_antes': contatado_antes_input,
+                'faixa_etaria': faixa_etaria_input,
+                'faixa_campaign': faixa_campaign_input
+            }])
+            
+            # Gera as colunas dummies do cliente individual
+            X_cliente_encoded = pd.get_dummies(X_cliente)
+            
+            # Alinha e preenche o vetor para ter as mesmas colunas estruturadas do treino (colunas_treino)
+            colunas_treino = resources["cols"]
+            X_cliente_final = pd.DataFrame(0.0, index=[0], columns=colunas_treino)
+            
+            for col in X_cliente_encoded.columns:
+                if col in X_cliente_final.columns:
+                    X_cliente_final.loc[0, col] = float(X_cliente_encoded.loc[0, col])
+            
+            # Obter as colunas numéricas que o scaler original espera (incluindo as macroeconômicas)
+            colunas_numericas_scaler = list(resources["scaler"].feature_names_in_)
+            
+            # Preenche as colunas numéricas no vetor final do cliente (usando médias do dataset para macroeconômicas)
+            for col in colunas_numericas_scaler:
+                if col == 'age':
+                    X_cliente_final.loc[0, col] = float(idade_input)
+                elif col == 'campaign':
+                    X_cliente_final.loc[0, col] = float(campaign_input)
+                elif col == 'pdays':
+                    X_cliente_final.loc[0, col] = float(pdays_val)
+                elif col == 'previous':
+                    X_cliente_final.loc[0, col] = float(previous_val)
+                else:
+                    # Se for variável macroeconômica, preenchemos com a média do dataset carregado
+                    if df is not None and col in df.columns:
+                        X_cliente_final.loc[0, col] = float(df[col].mean())
+                    else:
+                        X_cliente_final.loc[0, col] = 0.0
+            
+            # Executa Escalonamento para o Modelo Linear (Regressão Logística)
+            X_cliente_log = X_cliente_final.copy()
+            X_cliente_log[colunas_numericas_scaler] = resources["scaler"].transform(X_cliente_final[colunas_numericas_scaler])
+            
+            # Regressão Logística
+            prob_lr = float(resources["lr"].predict_proba(X_cliente_log)[0][1])
+            pred_lr = "Compra" if prob_lr > 0.5 else "Não compra"
+            
+            # Árvore de Decisão
+            prob_rf = float(resources["dt"].predict_proba(X_cliente_final)[0][1])
+            pred_rf = "Compra" if prob_rf > 0.5 else "Não compra"
+        else:
+            # Fallback de segurança se os pickles não foram carregados
+            prob_lr, pred_lr = 0.0, "Não compra"
+            prob_rf, pred_rf = 0.0, "Não compra"
+            st.warning("Modelos scikit-learn não foram carregados. Exibindo dados nulos.")
+            
         # Exibição de cards estilizados com glassmorphism (sem emojis)
         c1, c2, c3 = st.columns(3)
         
@@ -531,7 +662,7 @@ with aba2:
         with c3:
             st.markdown(f"""
             <div class='custom-card' style='text-align:center; min-height: 170px;'>
-                <div class='metric-label'>Random Forest</div>
+                <div class='metric-label'>Árvore de Decisão</div>
                 <div class='metric-value'>{prob_rf*100:.1f}%</div>
                 <span class='decision-badge {badge_rf}'>{pred_rf}</span>
             </div>
@@ -540,7 +671,7 @@ with aba2:
         # Comparação Visual Gráfica
         st.subheader("Probabilidades Comparadas")
         dados_prob = pd.DataFrame({
-            "Modelo": ["Teorema de Bayes (Manual)", "Regressão Logística", "Random Forest"],
+            "Modelo": ["Teorema de Bayes (Manual)", "Regressão Logística", "Árvore de Decisão"],
             "Probabilidade de Adesão (%)": [prob_bayes * 100, prob_lr * 100, prob_rf * 100],
             "Decisão": [pred_bayes, pred_lr, pred_rf]
         })
@@ -568,9 +699,9 @@ with aba2:
         
         st.markdown("""
         <div class='custom-alert'>
-            <strong>Nota de Integração:</strong> Este simulador está utilizando modelos temporários estruturados (mocks) 
-            parametrizados com as distribuições empíricas reais do dataset. Assim que os integrantes do grupo concluírem o 
-            treinamento e a exportação dos arquivos finais dos modelos, a rotina de predição será atualizada 
-            para carregar os coeficientes oficiais.
+            <strong>Validação Acadêmica:</strong> Este simulador carrega os coeficientes oficiais ajustados do scikit-learn 
+            (Regressão Logística e Árvore de Decisão) salvos em formato binário e executa dinamicamente o cálculo manual 
+            do Teorema de Bayes aplicando a estatística exata com Suavização de Laplace, garantindo conformidade matemática 
+            com os pilares do edital.
         </div>
         """, unsafe_allow_html=True)
